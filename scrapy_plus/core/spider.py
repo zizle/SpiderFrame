@@ -5,12 +5,14 @@ from scrapy_plus.item import Item
 
 
 class Spider(object):
-    start_url = 'http://www.baidu.com'
+    # start_url = 'http://www.baidu.com'
+    start_urls = []
 
     def start_requests(self):
         """构建初始请求对象"""
-        return Request(self.start_url)
+        for url in self.start_urls:
+            yield Request(url)
 
     def parse(self,response):
         """解析"""
-        return Item(response.body)
+        yield Item(response.body)
