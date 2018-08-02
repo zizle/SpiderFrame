@@ -1,6 +1,9 @@
 # _*_ coding:utf-8 _*_
+from datetime import datetime
 
 from scrapy_plus.http.request import Request
+
+from scrapy_plus.utils.log import logger
 
 from .spider import Spider
 from .downloader import Downloader
@@ -50,6 +53,11 @@ class Engine(object):
             self.pipeline.process_item(result)
 
     def start(self):
+        start = datetime.now()
+        logger.info('开始运行时间%s' % start)
         self._start_engine()
+        stop = datetime.now()
+        logger.info('程序结束时间%s' % stop)
+        logger.info('爬虫运行总耗时%.2f' % (stop - start).total_seconds())
 
 
