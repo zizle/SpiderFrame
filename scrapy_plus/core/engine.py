@@ -15,8 +15,8 @@ from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddeware
 
 
 class Engine(object):
-    def __init__(self, spider):
-        self.spider = spider
+    def __init__(self, spiders):
+        self.spiders = spiders
         self.scheduler = Scheduler()
         self.downloader = Downloader()
         self.pipeline = Pipeline()
@@ -29,12 +29,16 @@ class Engine(object):
 
     def _start_request(self):
         # 1. 爬虫模块发出初始请求
-        for start_request in self.spider.start_requests():
-            # 2. 把初始请求添加给调度器
-            # 利用爬虫中间件进行处理
-            start_request = self.spider_mid.process_request(start_request)
-            self.scheduler.add_request(start_request)
-            self.total_request_nums += 1
+        for spider_name, spider in self.spiders.items():
+            for start_request in spider.start_requests():
+                # 2. 把初始请求添加给调度器
+                # 利用爬虫中间件进行处理
+                start_request = self.spider_mid.process_request(start_request)
+
+                # 区分是哪个爬虫的请求
+                start_request.spider_name = spider_name
+                self.scheduler.add_request(start_request)
+                self.total_request_nums += 1
 
     def _execute_request_response_item(self):
         # 3. 从调度器获取请求对象，交给下载器发起请求，获取一个响应对象
@@ -51,11 +55,16 @@ class Engine(object):
         # response对象经过爬虫中间件的process_response进行处理
         response = self.spider_mid.process_response(response)
 
-        for result in self.spider.parse(response):
+        # 获取爬虫对象
+        spider = self.spiders[request.spider_name]
+        parse = getattr(spider, request.parse)
+
+        for result in parse(response):
             # 6. 判断结果对象
             # 6.1 如果是请求对象，那么就再交给调度器
             if isinstance(result, Request):
                 result = self.spider_mid.process_request(result)
+                result.spider_name = request.spider_name
                 self.scheduler.add_request(result)
                 self.total_request_nums += 1
             # 6.2 否则，就交给管道处理
