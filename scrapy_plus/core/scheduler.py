@@ -11,6 +11,7 @@ class Scheduler(object):
 
     def add_request(self, request):
         self.queue.put(request)
+        # 总请求数+1
         self.total_request_number += 1
 
     def get_request(self):

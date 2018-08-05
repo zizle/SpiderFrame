@@ -17,6 +17,6 @@ class Downloader(object):
             raise Exception('不支持的请求方法')
 
         # 返回响应对象
-        return Response(resp.url, resp.status_code, resp.headers, resp.content)
+        return Response(url=resp.url, status_code=resp.status_code, headers=resp.headers, body=resp.content)
             
 
