@@ -6,7 +6,6 @@ from scrapy_plus.item import Item
 
 class Spider(object):
     # start_url = 'http://www.baidu.com'
-    name = ''
     start_urls = []
 
     def start_requests(self):
