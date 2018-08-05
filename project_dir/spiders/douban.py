@@ -26,9 +26,9 @@ class DoubanSpider(Spider):
 
     def parse_detail(self, response):
         '''解析详情页'''
-        print('详情页url：', response.url)  # 打印一下响应的url
-        return []  # 由于必须返回一个容器，这里返回一个空列表
-
+        # print('详情页url：', response.url)  # 打印一下响应的url
+        # return []  # 由于必须返回一个容器，这里返回一个空列表
+        yield {'url': response.url} # 返回请求的url
 
 
 

@@ -15,12 +15,12 @@ from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddeware
 
 
 class Engine(object):
-    def __init__(self, spiders):
+    def __init__(self, spiders, pipelines=[]):
         self.spiders = spiders
         self.scheduler = Scheduler()
         self.downloader = Downloader()
-        self.pipeline = Pipeline()
-
+        # self.pipeline = Pipeline()
+        self.pipelines = pipelines
         self.spider_mid = SpiderMiddleware()
         self.downloader_mid = DownloaderMiddeware()
 
@@ -96,7 +96,8 @@ class Engine(object):
                 self.total_request_nums += 1
             # 6.2 否则，就交给管道处理
             else:
-                self.pipeline.process_item(result)
+                for pipeline in self.pipelines:
+                    pipeline.process_item(result, spider)
 
         self.total_response_nums += 1
 
