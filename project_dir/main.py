@@ -3,11 +3,13 @@
 
 from scrapy_plus.core.engine import Engine
 
-from spiders import BaiduSpider, DoubanSpider
-
+# from spiders import BaiduSpider, DoubanSpider
+from spiders.baidu import BaiduSpider
+from spiders.douban import DoubanSpider
 
 if __name__ == '__main__':
-    # spider = BaiduSpider()
-    spider = DoubanSpider()
-    engine = Engine(spider)
+    baidu_spider = BaiduSpider()
+    douban_spider = DoubanSpider()
+    spiders = {baidu_spider.name: baidu_spider, douban_spider.name: douban_spider}
+    engine = Engine(spiders)
     engine.start()

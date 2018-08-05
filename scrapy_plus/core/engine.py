@@ -15,8 +15,8 @@ from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddeware
 
 
 class Engine(object):
-    def __init__(self, spider):
-        self.spider = spider
+    def __init__(self, spiders):
+        self.spiders = spiders
         self.scheduler = Scheduler()
         self.downloader = Downloader()
         self.pipeline = Pipeline()
@@ -48,14 +48,17 @@ class Engine(object):
 
     def _start_request(self):
         # 1. 爬虫模块发出初始请求
-        for start_request in self.spider.start_requests():
-            # 2. 把初始请求添加给调度器
-            # 利用爬虫中间件进行处理
-            start_request = self.spider_mid.process_request(start_request)
-            # 加入调度器队列
-            self.scheduler.add_request(start_request)
-            # 请求数+1
-            self.total_request_nums += 1
+        for spider_name, spider in self.spiders.items():
+            for start_request in spider.start_requests():
+                # 2. 把初始请求添加给调度器
+                # 利用爬虫中间件进行处理
+                start_request = self.spider_mid.process_request(start_request)
+                # 绑定爬虫名称
+                start_request.spider_name = spider_name
+                # 加入调度器队列
+                self.scheduler.add_request(start_request)
+                # 请求数+1
+                self.total_request_nums += 1
 
     def _execute_request_response_item(self):
         # 3. 从调度器获取请求对象，交给下载器发起请求，获取一个响应对象
@@ -72,9 +75,11 @@ class Engine(object):
         response = self.downloader_mid.process_response(response)
         # response对象经过爬虫中间件的process_response进行处理
         response = self.spider_mid.process_response(response)
-
+        # 获取当前爬虫
+        spider = self.spiders[request.spider_name]
         # 解析方法的动态调用
-        parse = getattr(self.spider, request.parse)
+        # parse = getattr(self.spider, request.parse)
+        parse = getattr(spider, request.parse)
 
         # 5. 利用爬虫定义的解析方法，处理响应，得到结果
         for result in parse(response):
@@ -83,6 +88,8 @@ class Engine(object):
             if isinstance(result, Request):
                 # 通过爬虫中间件处理
                 result = self.spider_mid.process_request(result)
+                # 给request对象添加爬虫名字
+                result.spider_name = request.spider_name
                 # 加入调度器队列
                 self.scheduler.add_request(result)
                 # 请求数+1
