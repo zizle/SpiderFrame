@@ -15,7 +15,7 @@ from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddeware
 
 
 class Engine(object):
-    def __init__(self, spiders, pipelines=[]):
+    def __init__(self, spiders, pipelines=[], spider_mids=[], downloader_mids=[]):
         self.spiders = spiders
         self.scheduler = Scheduler()
         self.downloader = Downloader()
@@ -23,6 +23,9 @@ class Engine(object):
         self.pipelines = pipelines
         self.spider_mid = SpiderMiddleware()
         self.downloader_mid = DownloaderMiddeware()
+
+        self.spider_mids = spider_mids
+        self.downloader_mids = downloader_mids
 
         self.total_request_nums = 0
         self.total_response_nums = 0
@@ -52,7 +55,8 @@ class Engine(object):
             for start_request in spider.start_requests():
                 # 2. 把初始请求添加给调度器
                 # 利用爬虫中间件进行处理
-                start_request = self.spider_mid.process_request(start_request)
+                for spider_mid in self.spider_mids:
+                    start_request = spider_mid.process_request(start_request)
                 # 绑定爬虫名称
                 start_request.spider_name = spider_name
                 # 加入调度器队列
@@ -66,15 +70,18 @@ class Engine(object):
         if request is None:
             return
         # 利用下载中间件进行处理
-        request = self.downloader_mid.process_request(request)
+        for downloader_mid in self.downloader_mids:
+            request = downloader_mid.process_request(request)
         # 4. 利用下载器发起请求
         response = self.downloader.get_response(request)
         # meta对象的绑定
         response.meta = request.meta
         # response对象经过下载中间件的process_response进行处理
-        response = self.downloader_mid.process_response(response)
+        for downloader_mid in self.downloader_mids:
+            response = downloader_mid.process_response(response)
         # response对象经过爬虫中间件的process_response进行处理
-        response = self.spider_mid.process_response(response)
+        for spider_mid in self.spider_mids:
+            response = spider_mid.process_response(response)
         # 获取当前爬虫
         spider = self.spiders[request.spider_name]
         # 解析方法的动态调用
@@ -87,7 +94,8 @@ class Engine(object):
             # 6.1 如果是请求对象，那么就再交给调度器
             if isinstance(result, Request):
                 # 通过爬虫中间件处理
-                result = self.spider_mid.process_request(result)
+                for spider_mid in self.spider_mids:
+                    result = spider_mid.process_request(result)
                 # 给request对象添加爬虫名字
                 result.spider_name = request.spider_name
                 # 加入调度器队列
