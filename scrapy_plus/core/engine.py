@@ -1,8 +1,19 @@
 # _*_ coding:utf-8 _*_
-from datetime import datetime
 import time
 import importlib
-from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES
+from datetime import datetime
+from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, MAX_ASYNC_THREAD_NUMBER, ASYNC_TYPE
+
+
+# 判断使用的异步方式，导入相应的异步池
+if ASYNC_TYPE == 'thread':
+    from multiprocessing.dummy import Pool
+elif ASYNC_TYPE == 'coroutine':
+    from scrapy_plus.async.coroutine import Pool
+else:
+    raise Exception("不支持的异步类型：{}, 只能是'thread'或者'coroutine'".format(ASYNC_TYPE))
+
+
 from scrapy_plus.http.request import Request
 from scrapy_plus.utils.log import logger
 from .downloader import Downloader
@@ -18,6 +29,9 @@ class Engine(object):
         self.pipelines = self._auto_import_instances(PIPELINES)  # 管道
         self.spider_mids = self._auto_import_instances(SPIDER_MIDDLEWARES)  # 爬虫中间件
         self.downloader_mids = self._auto_import_instances(DOWNLOADER_MIDDLEWARES)  # 下载中间件
+
+        self.pool = Pool()
+        self.is_running = False
 
         self.total_request_nums = 0
         self.total_response_nums = 0
@@ -48,14 +62,36 @@ class Engine(object):
         logger.info("重复请求数量:{}".format(self.scheduler.repeat_request_num))
         logger.info("总的响应数量:{}".format(self.total_response_nums))
 
+    def _callback(self, temp):
+        if self.is_running:
+            self.pool.apply_async(self._execute_request_response_item, callback=self._callback, error_callback=self._error_callback)
+
+    def _error_callback(self, exception):
+        """异常回调函数"""
+        try:
+            raise exception  # 抛出异常后，才能被日志进行完整记录下来
+        except Exception as e:
+            logger.exception(e)
+
     def _start_engine(self):
-        self._start_request()
+        # 运行状态设置为True
+        self.is_running = True
+        # 异步线程池加入请求
+        self.pool.apply_async(self._start_request, error_callback=self._error_callback)
+        # 并发数控制
+        for i in range(MAX_ASYNC_THREAD_NUMBER):
+            # 异步线程池执行队列中的请求
+            self.pool.apply_async(self._execute_request_response_item, callback=self._callback, error_callback=self._error_callback)
+
+        # self._start_request()
         while True:
             time.sleep(0.0001)
-            self._execute_request_response_item()
-            # 成功的响应数+重复的数量>=总的请求数量 程序结束
-            if self.total_response_nums + self.scheduler.repeat_request_num>= self.total_request_nums:
-                break
+            # self._execute_request_response_item()
+            if self.total_response_nums != 0:
+                # 成功的响应数+重复的数量>=总的请求数量 程序结束
+                if self.total_response_nums + self.scheduler.repeat_request_num>= self.total_request_nums:
+                    self.is_running = False
+                    break
 
     def _start_request(self):
         # 1. 爬虫模块发出初始请求
