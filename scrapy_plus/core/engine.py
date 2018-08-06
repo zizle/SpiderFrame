@@ -45,6 +45,7 @@ class Engine(object):
         logger.info('爬虫运行总耗时%.2f' % (stop - start).total_seconds())
 
         logger.info("总的请求数量:{}".format(self.total_request_nums))
+        logger.info("重复请求数量:{}".format(self.scheduler.repeat_request_num))
         logger.info("总的响应数量:{}".format(self.total_response_nums))
 
     def _start_engine(self):
@@ -52,7 +53,8 @@ class Engine(object):
         while True:
             time.sleep(0.0001)
             self._execute_request_response_item()
-            if self.total_response_nums >= self.total_request_nums:
+            # 成功的响应数+重复的数量>=总的请求数量 程序结束
+            if self.total_response_nums + self.scheduler.repeat_request_num>= self.total_request_nums:
                 break
 
     def _start_request(self):
@@ -94,23 +96,25 @@ class Engine(object):
         # parse = getattr(self.spider, request.parse)
         parse = getattr(spider, request.parse)
 
-        # 5. 利用爬虫定义的解析方法，处理响应，得到结果
-        for result in parse(response):
-            # 6. 判断结果对象
-            # 6.1 如果是请求对象，那么就再交给调度器
-            if isinstance(result, Request):
-                # 通过爬虫中间件处理
-                for spider_mid in self.spider_mids:
-                    result = spider_mid.process_request(result)
-                # 给request对象添加爬虫名字
-                result.spider_name = request.spider_name
-                # 加入调度器队列
-                self.scheduler.add_request(result)
-                # 请求数+1
-                self.total_request_nums += 1
-            # 6.2 否则，就交给管道处理
-            else:
-                for pipeline in self.pipelines:
-                    pipeline.process_item(result, spider)
-
+        results = parse(response)
+        if results is not None:
+            # 5. 利用爬虫定义的解析方法，处理响应，得到结果
+            for result in results:
+                # 6. 判断结果对象
+                # 6.1 如果是请求对象，那么就再交给调度器
+                if isinstance(result, Request):
+                    # 通过爬虫中间件处理
+                    for spider_mid in self.spider_mids:
+                        result = spider_mid.process_request(result)
+                    # 给request对象添加爬虫名字
+                    result.spider_name = request.spider_name
+                    # 加入调度器队列
+                    self.scheduler.add_request(result)
+                    # 请求数+1
+                    self.total_request_nums += 1
+                # 6.2 否则，就交给管道处理
+                else:
+                    for pipeline in self.pipelines:
+                        pipeline.process_item(result, spider)
+        # 响应数+1
         self.total_response_nums += 1
