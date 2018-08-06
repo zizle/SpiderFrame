@@ -8,6 +8,13 @@ class BaiduSpider(Spider):
     name = 'baidu'
     start_urls = ['https://www.baidu.com', 'https://www.baidu.com']
 
+    total = 0
+
     def parse(self, response):
-        for i in range(3):
-            yield Request(self.start_urls[0])
+        # self.total += 1
+        # if self.total > 5:
+        #     return
+        yield Request(self.start_urls[0], filter=False, parse='parse_detail')
+
+    def parse_detail(self, response):
+        return []

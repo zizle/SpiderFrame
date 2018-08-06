@@ -40,3 +40,9 @@ DOWNLOADER_MIDDLEWARES = []
 
 # 默认异步线程最大并发数
 MAX_ASYNC_THREAD_NUMBER = 16
+
+# 指纹是否持久化
+# 默认为True 即持久化请求对象的指纹,达到断点续爬的目的
+# 如果为False,则在爬虫结束的时候清空指纹库
+# 可以在项目的settings.py中重新赋值进行覆盖
+FP_PERSIST = True

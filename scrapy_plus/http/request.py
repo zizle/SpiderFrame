@@ -3,7 +3,7 @@
 
 class Request(object):
     """request对象"""
-    def __init__(self, url, method="GET", headers=None, params=None, data=None, parse='parse', meta={}):
+    def __init__(self, url, method="GET", headers=None, params=None, data=None, parse='parse', meta={}, filter=True):
         self.url = url
         self.method = method
         self.headers = headers
@@ -12,4 +12,5 @@ class Request(object):
 
         self.parse = parse
         self.meta = meta
+        self.filter = filter
 

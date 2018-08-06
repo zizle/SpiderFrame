@@ -6,6 +6,7 @@ DEFAULT_LOG_FILENAME = '日志.log'    # 默认日志文件名称
 # 启用的爬虫类
 SPIDERS = [
     'spiders.baidu.BaiduSpider',
+    # 'spiders.baidu2.Baidu2Spider',
     'spiders.douban.DoubanSpider'
 ]
 
@@ -31,3 +32,6 @@ DOWNLOADER_MIDDLEWARES = [
 # ASYNC_TYPE = 'coroutine'
 # 启用分布式
 SCHEDULER_PERSIST = True
+
+# 设置断点续爬， 默认True
+FP_PERSIST = False

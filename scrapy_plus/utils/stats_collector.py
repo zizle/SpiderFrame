@@ -1,7 +1,7 @@
 # _*_ coding:utf-8 _*_
 
 import redis
-from scrapy_plus.conf.settings import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_SET_NAME
+from scrapy_plus.conf.settings import REDIS_HOST, REDIS_PORT, REDIS_DB, REDIS_SET_NAME, FP_PERSIST
 
 
 class NormalStatsCollector(object):
@@ -86,6 +86,9 @@ class RedisStatsCollector(object):
         '''程序结束后清空所有的值'''
         self.redis.delete(self.request_nums_key, self.response_nums_key,
                           self.repeat_request_nums_key, self.start_request_nums_key)
+        # 判断是否清空指纹集合
+        if not FP_PERSIST:  # not True 不持久化,就清空指纹集合
+            self.redis.delete(REDIS_SET_NAME)
 
     @property
     def request_nums(self):

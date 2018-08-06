@@ -3,7 +3,6 @@ import time
 import importlib
 from datetime import datetime
 from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, MAX_ASYNC_THREAD_NUMBER, ASYNC_TYPE, SCHEDULER_PERSIST
-
 from scrapy_plus.utils.stats_collector import NormalStatsCollector, RedisStatsCollector
 
 
@@ -41,6 +40,8 @@ class Engine(object):
 
         self.pool = Pool()
         self.is_running = False
+        # 放置定时增量爬虫
+        self.timed_task_spiders = []
 
     def _auto_import_instances(self, path=[], isspider=False):
         instance = {} if isspider else []
@@ -51,6 +52,7 @@ class Engine(object):
             cls = getattr(ret, cls_name)
             if isspider:
                 instance[cls_name] = cls()
+
             else:
                 instance.append(cls())
 
@@ -63,6 +65,10 @@ class Engine(object):
         logger.info("框架是否启用Redis分布式：{}".format(SCHEDULER_PERSIST))
         logger.info("最大并发数：{}".format(MAX_ASYNC_THREAD_NUMBER))
         logger.info("启动的爬虫有：{}".format(list(self.spiders.keys())))
+        for spider in self.spiders.values():
+            if spider.timed_task:
+                self.timed_task_spiders.append(spider.name)
+                logger.info("启动的定时增量爬虫有：{}".format(self.timed_task_spiders))
         logger.info("启动的爬虫中间件有：\n{}".format(SPIDER_MIDDLEWARES))
         logger.info("启动的下载中间件有：\n{}".format(DOWNLOADER_MIDDLEWARES))
         logger.info("启动的管道有：\n{}".format(PIPELINES))
@@ -98,32 +104,33 @@ class Engine(object):
             # 异步线程池执行队列中的请求
             self.pool.apply_async(self._execute_request_response_item, callback=self._callback, error_callback=self._error_callback)
 
-        # self._start_request()
+        timed_task_sum = sum([spider.timed_task for spider in self.spiders.values()])  # 对[False,True]求和
+        start_urls_nums = sum([len(spider.start_urls) for spider in self.spiders.values()])
         while True:
             time.sleep(0.0001)
-            # self._execute_request_response_item()
-            if self.collector.request_nums != 0:
-
-                # 成功的响应数+重复的数量>=总的请求数量 程序结束
+            # 有定时爬虫时,一直不退出程序; 没有定时增量爬虫,才判断是否退出!
+            if self.collector.request_nums + self.collector.repeat_request_nums >= start_urls_nums and timed_task_sum == 0:
                 if self.collector.response_nums + self.collector.repeat_request_nums >= self.collector.request_nums:
-                # if self.total_response_nums + self.scheduler.repeat_request_num>= self.total_request_nums:
                     self.is_running = False
                     break
 
     def _start_request(self):
-        # 1. 爬虫模块发出初始请求
-        for spider_name, spider in self.spiders.items():
+        """单独处理爬虫模块中start_requests()产生的request对象"""
+        def _func(spider_name, spider):
             for start_request in spider.start_requests():
-                # 2. 把初始请求添加给调度器
-                # 利用爬虫中间件进行处理
+                # 1. 对start_request进过爬虫中间件进行处理
                 for spider_mid in self.spider_mids:
                     start_request = spider_mid.process_request(start_request)
-                # 绑定爬虫名称
+                # 为请求对象绑定它所属的爬虫的名称
                 start_request.spider_name = spider_name
-                # 加入调度器队列
+                # 2. 调用调度器的add_request方法，添加request对象到调度器中
                 self.scheduler.add_request(start_request)
                 # 请求数+1
                 self.collector.incr(self.collector.request_nums_key)
+
+        for spider_name, spider in self.spiders.items():
+            # 把执行每个爬虫的start_requests方法，设置为异步的
+            self.pool.apply_async(_func, args=(spider_name, spider), error_callback=self._error_callback)
 
     def _execute_request_response_item(self):
         # 3. 从调度器获取请求对象，交给下载器发起请求，获取一个响应对象

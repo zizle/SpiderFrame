@@ -8,6 +8,7 @@ class Spider(object):
     # start_url = 'http://www.baidu.com'
     name = ''
     start_urls = []
+    timed_task = False
 
     def start_requests(self):
         """构建初始请求对象"""
