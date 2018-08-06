@@ -6,13 +6,24 @@ import w3lib.url
 import six
 from hashlib import sha1
 
+from scrapy_plus.utils.queue import Queue as RedisQueue
+from scrapy_plus.conf.settings import SCHEDULER_PERSIST
+from scrapy_plus.utils.set import NoramlFilterContainer, RedisFilterContainer
+
+
 class Scheduler(object):
-    def __init__(self):
-        self.queue = Queue()
+    def __init__(self, collector):
+        if SCHEDULER_PERSIST:
+            self.queue = RedisQueue()
+            self._filter_container = RedisFilterContainer()
+        else:
+            self.queue = Queue()
+            self._filter_container = NoramlFilterContainer()
         # 记录总共的请求数
 
-        self.repeat_request_num = 0  # 统计重复的数量
-        self._filter_container = set()  # 去重容器,是一个集合,存储已经发过的请求的特征 url
+        # self.repeat_request_num = 0  # 统计重复的数量
+        # self._filter_container = set()  # 去重容器,是一个集合,存储已经发过的请求的特征 url
+        self.collector = collector
 
     def add_request(self, request):
         if self._filter_request(request):
@@ -29,11 +40,13 @@ class Scheduler(object):
     def _filter_request(self, request):
         """去重"""
         request.fp = self._gen_fp(request)
-        if request.fp not in self._filter_container:
-            self._filter_container.add(request.fp)  # 向指纹容器集合添加一个指纹
+        if not self._filter_container.exists(request.fp):
+            self._filter_container.add_fp(request.fp)
             return True
+
         else:
-            self.repeat_request_num += 1
+            # self.repeat_request_num += 1
+            self.collector.incr(self.collector.repeat_request_nums_key)
             logger.info("发现重复的请求：<{} {}>".format(request.method, request.url))
             return False
 

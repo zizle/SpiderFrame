@@ -28,4 +28,6 @@ DOWNLOADER_MIDDLEWARES = [
 ]
 
 # 使用协程并发
-ASYNC_TYPE = 'coroutine'
+# ASYNC_TYPE = 'coroutine'
+# 启用分布式
+SCHEDULER_PERSIST = True

@@ -2,7 +2,9 @@
 import time
 import importlib
 from datetime import datetime
-from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, MAX_ASYNC_THREAD_NUMBER, ASYNC_TYPE
+from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES, MAX_ASYNC_THREAD_NUMBER, ASYNC_TYPE, SCHEDULER_PERSIST
+
+from scrapy_plus.utils.stats_collector import NormalStatsCollector, RedisStatsCollector
 
 
 # 判断使用的异步方式，导入相应的异步池
@@ -24,7 +26,14 @@ class Engine(object):
     def __init__(self):
 
         self.spiders = self._auto_import_instances(SPIDERS, isspider=True)
-        self.scheduler = Scheduler()
+        # 启用分布式
+        if SCHEDULER_PERSIST:
+            self.collector = RedisStatsCollector()
+        else:
+            self.collector = NormalStatsCollector()
+        # 调度器
+        self.scheduler = Scheduler(self.collector)
+        # 下载器
         self.downloader = Downloader()
         self.pipelines = self._auto_import_instances(PIPELINES)  # 管道
         self.spider_mids = self._auto_import_instances(SPIDER_MIDDLEWARES)  # 爬虫中间件
@@ -32,9 +41,6 @@ class Engine(object):
 
         self.pool = Pool()
         self.is_running = False
-
-        self.total_request_nums = 0
-        self.total_response_nums = 0
 
     def _auto_import_instances(self, path=[], isspider=False):
         instance = {} if isspider else []
@@ -51,16 +57,25 @@ class Engine(object):
         return instance
 
     def start(self):
-        start = datetime.now()
-        logger.info('开始运行时间%s' % start)
+        t_start = datetime.now()
+        logger.info("爬虫开始启动：{}".format(t_start))
+        logger.info("爬虫运行模式：{}".format(ASYNC_TYPE))
+        logger.info("框架是否启用Redis分布式：{}".format(SCHEDULER_PERSIST))
+        logger.info("最大并发数：{}".format(MAX_ASYNC_THREAD_NUMBER))
+        logger.info("启动的爬虫有：{}".format(list(self.spiders.keys())))
+        logger.info("启动的爬虫中间件有：\n{}".format(SPIDER_MIDDLEWARES))
+        logger.info("启动的下载中间件有：\n{}".format(DOWNLOADER_MIDDLEWARES))
+        logger.info("启动的管道有：\n{}".format(PIPELINES))
+        # 开启引擎
         self._start_engine()
-        stop = datetime.now()
-        logger.info('程序结束时间%s' % stop)
-        logger.info('爬虫运行总耗时%.2f' % (stop - start).total_seconds())
-
-        logger.info("总的请求数量:{}".format(self.total_request_nums))
-        logger.info("重复请求数量:{}".format(self.scheduler.repeat_request_num))
-        logger.info("总的响应数量:{}".format(self.total_response_nums))
+        # 结束
+        t_end = datetime.now()
+        logger.info("爬虫运行结束：{}".format(t_end))
+        logger.info("耗时：%s" % (t_end - t_start).total_seconds())
+        logger.info("一共获取了请求：{}个".format(self.collector.request_nums))
+        logger.info("重复的请求：{}个".format(self.collector.repeat_request_nums))
+        logger.info("成功的请求：{}个".format(self.collector.response_nums))
+        self.collector.clear()  # 清除redis中所有的计数的值,但不清除指纹集合
 
     def _callback(self, temp):
         if self.is_running:
@@ -87,9 +102,11 @@ class Engine(object):
         while True:
             time.sleep(0.0001)
             # self._execute_request_response_item()
-            if self.total_response_nums != 0:
+            if self.collector.request_nums != 0:
+
                 # 成功的响应数+重复的数量>=总的请求数量 程序结束
-                if self.total_response_nums + self.scheduler.repeat_request_num>= self.total_request_nums:
+                if self.collector.response_nums + self.collector.repeat_request_nums >= self.collector.request_nums:
+                # if self.total_response_nums + self.scheduler.repeat_request_num>= self.total_request_nums:
                     self.is_running = False
                     break
 
@@ -106,7 +123,7 @@ class Engine(object):
                 # 加入调度器队列
                 self.scheduler.add_request(start_request)
                 # 请求数+1
-                self.total_request_nums += 1
+                self.collector.incr(self.collector.request_nums_key)
 
     def _execute_request_response_item(self):
         # 3. 从调度器获取请求对象，交给下载器发起请求，获取一个响应对象
@@ -147,10 +164,10 @@ class Engine(object):
                     # 加入调度器队列
                     self.scheduler.add_request(result)
                     # 请求数+1
-                    self.total_request_nums += 1
+                    self.collector.incr(self.collector.request_nums_key)
                 # 6.2 否则，就交给管道处理
                 else:
                     for pipeline in self.pipelines:
                         pipeline.process_item(result, spider)
         # 响应数+1
-        self.total_response_nums += 1
+        self.collector.incr(self.collector.response_nums_key)
