@@ -1,34 +1,40 @@
 # _*_ coding:utf-8 _*_
 from datetime import datetime
 import time
-
+import importlib
+from scrapy_plus.conf.settings import SPIDERS, PIPELINES, SPIDER_MIDDLEWARES, DOWNLOADER_MIDDLEWARES
 from scrapy_plus.http.request import Request
-
 from scrapy_plus.utils.log import logger
-
 from .downloader import Downloader
-from .pipeline import Pipeline
 from .scheduler import Scheduler
-
-from scrapy_plus.middlewares.spider_middleware import SpiderMiddleware
-from scrapy_plus.middlewares.downloader_middlewares import DownloaderMiddeware
 
 
 class Engine(object):
-    def __init__(self, spiders, pipelines=[], spider_mids=[], downloader_mids=[]):
-        self.spiders = spiders
+    def __init__(self):
+
+        self.spiders = self._auto_import_instances(SPIDERS, isspider=True)
         self.scheduler = Scheduler()
         self.downloader = Downloader()
-        # self.pipeline = Pipeline()
-        self.pipelines = pipelines
-        self.spider_mid = SpiderMiddleware()
-        self.downloader_mid = DownloaderMiddeware()
-
-        self.spider_mids = spider_mids
-        self.downloader_mids = downloader_mids
+        self.pipelines = self._auto_import_instances(PIPELINES)  # 管道
+        self.spider_mids = self._auto_import_instances(SPIDER_MIDDLEWARES)  # 爬虫中间件
+        self.downloader_mids = self._auto_import_instances(DOWNLOADER_MIDDLEWARES)  # 下载中间件
 
         self.total_request_nums = 0
         self.total_response_nums = 0
+
+    def _auto_import_instances(self, path=[], isspider=False):
+        instance = {} if isspider else []
+        for p in path:
+            module_name = p.rsplit('.', 1)[0]
+            cls_name = p.rsplit('.', 1)[1]
+            ret = importlib.import_module(module_name)
+            cls = getattr(ret, cls_name)
+            if isspider:
+                instance[cls_name] = cls()
+            else:
+                instance.append(cls())
+
+        return instance
 
     def start(self):
         start = datetime.now()
@@ -108,8 +114,3 @@ class Engine(object):
                     pipeline.process_item(result, spider)
 
         self.total_response_nums += 1
-
-
-
-
-
